@@ -6,6 +6,7 @@ module Foreign.IOVec
     (IOVec()
     ,withByteString
     ,withLazyByteString
+    ,writev
     )
     where
 
@@ -35,8 +36,8 @@ withLazyByteString b f =
         num = length bs
     in allocaBytes (num * {#sizeof hs_iovec#}) $ \vecAry -> go vecAry 0 bs
 
-   where go vecAry off [] = f (IOVec vecAry) off
-         go vecAry off (b:bs) =
+   where go vecAry !off [] = f (IOVec vecAry) off
+         go vecAry !off (b:bs) =
 
              let vec = vecAry `plusPtr` (off * {#sizeof hs_iovec#})
                  (fptr, bsOff, bsLen) = S.toForeignPtr b
@@ -46,8 +47,9 @@ withLazyByteString b f =
                   {#set hs_iovec->iov_len#}  vec $ cIntConv bsLen
                   go vecAry (off+1) bs
 
-writev :: CInt -> L.ByteString -> IO ()
+-- | Binding to writev using 'withLazyByteString'
+writev :: CInt -> L.ByteString -> IO CSize
 writev fd bs = withLazyByteString bs $ \iov count ->
-               c_writev fd iov (cIntConv count) >> return ()
+               c_writev fd iov (cIntConv count)
 
 foreign import ccall unsafe "writev" c_writev :: CInt -> IOVec -> CInt -> IO CSize
