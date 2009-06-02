@@ -17,6 +17,9 @@ import qualified Data.ByteString.Lazy as L
 import C2HS
 {#import Foreign.IOVec#}
 
+#include <xcb/xcb.h>
+#include <xcb/xcbext.h>
+
 {-
   Welcome to my sometimes-dodgy FFI bindings to XCB.
   The idea isn't really to write something to directly
@@ -211,7 +214,7 @@ bigEventLength bge = withGenericBigEvent bge $ \bgePtr -> do
 -- the event.
 unsafeEventData :: GenericEvent -> IO S.ByteString
 unsafeEventData ge = do
-  isError <- isEventError ge
+  isError <- isError ge
   if isError then unsafeErrorData (unsafeToError ge) else do
 
   isBig <- isBigEvent ge
@@ -281,6 +284,8 @@ mkRequestInfo ext opcode isVoid = do
         {#set protocol_request_t->isvoid#} ptr (fromBool isVoid)
       return $ RequestInfo fptr
       
+{#enum send_request_flags_t as RequestFlags {underscoreToCase} deriving(Eq, Show)#}
+
 
 -- |Note: the 'count' field in the request info is always
 -- over-written to the number of chunks in the ByteString
@@ -288,9 +293,10 @@ sendRequest :: Connection -> Int -> L.ByteString -> RequestInfo -> IO Cookie
 sendRequest c flags bytes rInfo
     = withConnection c $ \cPtr ->
       withRequestInfo rInfo $ \rPtr ->
-      withLazyByteString bytes $ \vec vecNum -> do
+      withLazyByteString bytes $ \vec vecNum ->
+      withIOVec vec $ \vecPtr -> do
       {#set protocol_request_t->count#} rPtr (cIntConv vecNum)
-      liftM (Cookie . cIntConv) $ {#call send_request#} cPtr (cIntConv flags) vec rPtr
+      liftM (Cookie . cIntConv) $ {#call send_request#} cPtr (cIntConv flags) (castPtr vecPtr) rPtr
 
 waitForReply :: Connection -> Cookie -> IO (Either GenericError GenericReply)
 waitForReply c (Cookie request) =

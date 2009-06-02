@@ -6,9 +6,10 @@ module Graphics.X11.Xcb
  ,I.parseDisplay
  ,I.flush
  ,I.maximumRequestLength
- ,I.prefetchMaximumRequestLength
+ ,I.prefetchMaximumReuestLength
  ,I.connectionHasError
- ,I.sendRequest
+ ,sendRequest
+ ,I.RequestFlags(..)
  ,I.RequestInfo
  ,I.mkRequestInfo
  ,I.Cookie
@@ -22,10 +23,19 @@ module Graphics.X11.Xcb
  ,extensionMajorOpcode
  ,extensionFirstEvent
  ,extensionFirstError
+ ,withForeignConnection
+ ,I.withConnection
  ) where
 
 import qualified Graphics.X11.Xcb.Internal as I
 import qualified Data.ByteString as S
+import qualified Data.ByteString.Lazy as L
+
+import Control.Applicative ((<$>))
+import Data.Bits((.&.))
+import Data.List (foldl')
+import Data.Word
+import Foreign(Ptr)
 
 -- | Try not to do something sneaky like
 -- 'withForeignConnection ptr return'.  The Connection
@@ -39,14 +49,11 @@ withForeignConnection cPtr f
   x <- f c
   return x
 
--- | Can supply a connection owned by the Haskell caller to a
--- foreign library.
--- It may be wise to check 'connectionHasError' upon return.
-withConnection :: I.Connection -> (Ptr Connection -> IO a) -> IO a
-withConnection c f
-    = I.withConnection c $ \cFPtr ->
-      withForeignPtr cFPtr $ \cPtr ->
-      f cPtr
+-- | Send an XCB request, consisting of the passed in Bytes. 
+sendRequest :: I.Connection -> [I.RequestFlags] -> L.ByteString -> I.RequestInfo -> IO I.Cookie
+sendRequest c flagsList bytes rInfo
+    = let flags = foldl' (.&.) 0 (map (fromIntegral . fromEnum) flagsList)
+      in I.sendRequest c flags bytes rInfo 
 
 -- | If the passed in request has generated an error (and the request
 -- was set checked) this will return the data for the error.
@@ -55,7 +62,7 @@ requestCheck c cookie
     = do
   resp <- I.requestCheck c cookie
   case resp of
-    Nothin -> return Nothing
+    Nothing -> return Nothing
     Just err ->
         Just <$> I.unsafeErrorData err
 
@@ -63,7 +70,7 @@ requestCheck c cookie
 -- Errors associated with checked requests will not
 -- be available from this call.
 waitForEvent :: I.Connection -> IO S.ByteString
-waitForEvent c = I.waitForEvent >>= I.unsafeEventData
+waitForEvent c = I.waitForEvent c >>= I.unsafeEventData
 
 waitForReply :: I.Connection -> I.Cookie -> IO (Either S.ByteString S.ByteString)
 waitForReply c cookie
@@ -90,4 +97,4 @@ extensionFirstError c e
     = I.unsafeGetExtensionData c e >>= I.extensionFirstError
 
 getSetup :: I.Connection -> IO S.ByteString
-getSetup c = S.copy <$> unsafeGetSetup c >>= unsafeSetupData
+getSetup c = S.copy <$> (I.unsafeGetSetup c >>= I.unsafeSetupData)

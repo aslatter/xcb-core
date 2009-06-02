@@ -1,11 +1,12 @@
 -- -*-haskell-*-
 
-{-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE ForeignFunctionInterface, BangPatterns #-}
 
 module Foreign.IOVec
     (IOVec()
     ,withByteString
     ,withLazyByteString
+    ,withIOVec
     ,writev
     )
     where
@@ -23,6 +24,10 @@ typedef struct iovec hs_iovec;
 #endc
 
 {#pointer *hs_iovec as IOVec newtype#}
+
+withIOVec :: IOVec -> (Ptr IOVec -> IO a) -> IO a
+withIOVec (IOVec ptr) f = f ptr
+{-# INLINE withIOVec #-}
 
 withByteString :: S.ByteString -> (IOVec -> Int -> IO b) -> IO b
 withByteString b = withLazyByteString (L.fromChunks [b])
