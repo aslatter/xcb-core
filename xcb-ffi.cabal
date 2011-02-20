@@ -8,6 +8,8 @@ Author:            Antoine Latter
 Maintainer:        aslatter@gmail.com
 Build-Type:        Simple
 
+Cabal-Version:     >= 1.6
+
 Library
 
   Build-depends: base == 4.*, bytestring == 0.9.*
