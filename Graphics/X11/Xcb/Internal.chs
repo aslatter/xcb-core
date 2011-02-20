@@ -7,6 +7,7 @@
 
 module Graphics.X11.Xcb.Internal where
 
+import Control.Applicative
 import Control.Monad
 import Foreign
 import Foreign.C.String
@@ -309,6 +310,33 @@ sendRequest c flags bytes rInfo
       withIOVec vec $ \vecPtr -> do
       {#set protocol_request_t->count#} rPtr (fromIntegral vecNum)
       liftM (Cookie . fromIntegral) $ {#call send_request#} cPtr (fromIntegral flags) (castPtr vecPtr) rPtr
+
+-- | Return 'Nothing' on failure, or the last request id on success.
+-- This must be called before calling 'writev', as it indicates that you would
+-- like full control of the write end of the connection socket.
+takeSocket :: Connection
+           -> FunPtr (Ptr () -> IO ())  -- ^ Callback to return socket
+           -> Ptr ()                    -- ^ Callback argument
+           -> Int                       -- ^ Request flags
+           -> IO (Maybe Word64)
+takeSocket c fn fnArg flags
+    = withConnection c $ \cPtr ->
+      alloca $ \countPtr -> do
+      ret <- toBool <$> {#call take_socket#} cPtr fn fnArg (fromIntegral flags) countPtr
+      countOpt <- if ret then Just . fromIntegral <$> peek countPtr else return Nothing
+      return countOpt
+
+-- | Write raw bytes to the connection socket. The count parameter
+-- indicates the number of requests in this call. It is assumed
+-- that 'takeSocket' has been called prior to calling this. We force the
+-- spine of the lazy bytestring argument before consuming it, so watch
+-- out for that.
+writev :: Connection -> L.ByteString -> Word64 -> IO Bool
+writev c bytes reqCount
+    = withConnection c $ \cPtr ->
+      withLazyByteString bytes $ \vec vecNum ->
+      withIOVec vec $ \vecPtr ->
+      toBool <$> {#call xcb_writev#} cPtr (castPtr vecPtr) (fromIntegral vecNum) (fromIntegral reqCount)
 
 waitForReply :: Connection -> Cookie -> IO (Either GenericError GenericReply)
 waitForReply c (Cookie request) =
