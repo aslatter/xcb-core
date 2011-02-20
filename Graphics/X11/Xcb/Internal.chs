@@ -25,7 +25,7 @@ import qualified Data.ByteString.Lazy as L
 peekIntConv
     :: (Integral a, Num b, Storable a)
        => Ptr a -> IO b
-peekIntConv ptr = fromIntegral `liftM` peek ptr
+peekIntConv ptr = fromIntegral <$> peek ptr
 
 {-
   Welcome to my sometimes-dodgy FFI bindings to XCB.
@@ -72,7 +72,7 @@ parseDisplay display
       alloca $ \hostStringPtr ->
       alloca $ \displayNumPtr ->
       alloca $ \screenPtr -> do
-      success <- liftM toBool $
+      success <- toBool <$>
                  {#call unsafe parse_display#} displayPtr hostStringPtr displayNumPtr screenPtr
       if not success then return Nothing else do
 
@@ -87,7 +87,7 @@ parseDisplay display
 -- | Flush the write buffers.
 flush :: Connection -> IO Bool
 flush c = withConnection c $ \cPtr ->
-          liftM toBool $ {#call flush as flush_#} cPtr
+          toBool <$> {#call flush as flush_#} cPtr
 
 -- | The memory backing this data structure is owned
 -- by the passed in Connection - and will magicaly vanish
@@ -99,13 +99,13 @@ unsafeGetSetup c = withConnection c $ \cPtr ->
 
 -- | Length of the setup data in units of four bytes.
 setupLength :: Setup -> IO Word16
-setupLength (Setup s) = liftM fromIntegral $ {#get setup_t->length#} s
+setupLength (Setup s) = fromIntegral <$> {#get setup_t->length#} s
 
 -- | This ByteString is just as unsafe as the passed in connection
 -- object.  Please make a copy.
 unsafeSetupData :: Setup -> IO S.ByteString
 unsafeSetupData s@(Setup sPtr) = do
-  len <- liftM (4*) $ setupLength s
+  len <- (4*) <$> setupLength s
   sFPtr <- newForeignPtr_ sPtr
   return $ S.fromForeignPtr (castForeignPtr sFPtr) 0 (fromIntegral len)
 
@@ -114,7 +114,7 @@ unsafeSetupData s@(Setup sPtr) = do
 -- on the big-requests extension to find out if we can use that.
 maximumRequestLength :: Connection -> IO Word32
 maximumRequestLength c = withConnection c $ \cPtr ->
-                         liftM fromIntegral $ {#call get_maximum_request_length#} cPtr
+                         fromIntegral <$> {#call get_maximum_request_length#} cPtr
 
 -- | Asynchronous version of 'maximumRequestLength'.  The return
 -- from the server is cached for subsequent callse to 'maximumRequestLength'.
@@ -125,7 +125,7 @@ prefetchMaximumReuestLength c = withConnection c $ \cPtr ->
 -- | Is the connection in an error state?
 connectionHasError :: Connection -> IO Bool
 connectionHasError c = withConnection c $ \cPtr ->
-                       liftM toBool $ {#call connection_has_error#} cPtr
+                       toBool <$> {#call connection_has_error#} cPtr
 
 newtype Cookie = Cookie CUInt
 
@@ -136,11 +136,11 @@ newtype Cookie = Cookie CUInt
 instance Storable Extension where
     sizeOf (Extension ex) = sizeOf ex
     alignment (Extension ex) = alignment ex
-    peekElemOff ptr off = liftM Extension $ peekElemOff (castPtr ptr) off
+    peekElemOff ptr off = Extension <$> peekElemOff (castPtr ptr) off
     pokeElemOff ptr off (Extension ex) = pokeElemOff (castPtr ptr) off ex
-    peekByteOff ptr off = liftM Extension $ peekByteOff ptr off
+    peekByteOff ptr off = Extension <$> peekByteOff ptr off
     pokeByteOff ptr off (Extension ex) = pokeByteOff ptr off ex
-    peek ptr = liftM Extension $ peek (castPtr ptr)
+    peek ptr = Extension <$> peek (castPtr ptr)
     poke ptr (Extension ex) = poke (castPtr ptr) ex
 
 {#pointer *query_extension_reply_t as ExtensionInfo newtype#} -- freed with Connection, no finalizer
@@ -155,19 +155,19 @@ unsafeGetExtensionData c ext
 
 extensionPresent :: ExtensionInfo -> IO Bool
 extensionPresent (ExtensionInfo ext)
-    = liftM toBool $ {#get query_extension_reply_t->present#} ext
+    = toBool <$> {#get query_extension_reply_t->present#} ext
 
 extensionMajorOpcode :: ExtensionInfo -> IO Word8
 extensionMajorOpcode (ExtensionInfo ext)
-    = liftM fromIntegral $ {#get query_extension_reply_t->major_opcode#} ext
+    = fromIntegral <$> {#get query_extension_reply_t->major_opcode#} ext
 
 extensionFirstEvent :: ExtensionInfo -> IO Word8
 extensionFirstEvent (ExtensionInfo ext)
-    = liftM fromIntegral $ {#get query_extension_reply_t->first_event#} ext
+    = fromIntegral <$> {#get query_extension_reply_t->first_event#} ext
 
 extensionFirstError :: ExtensionInfo -> IO Word8
 extensionFirstError (ExtensionInfo ext)
-    = liftM fromIntegral $ {#get query_extension_reply_t->first_error#} ext
+    = fromIntegral <$> {#get query_extension_reply_t->first_error#} ext
 
 -- | Non-blocking query for extension data
 prefetchExtension :: Connection -> Extension -> IO ()
@@ -179,10 +179,10 @@ class HasResponseType a where
     responseType :: a -> IO Int
 
 isBigEvent :: HasResponseType a => a -> IO Bool
-isBigEvent ev = (== 35) `liftM` responseType ev
+isBigEvent ev = (== 35) <$> responseType ev
 
 isError :: HasResponseType a => a -> IO Bool
-isError ev = (== 2) `liftM` responseType ev
+isError ev = (== 2) <$> responseType ev
 
 -- Events
 withGenericEvent :: GenericEvent -> (Ptr GenericEvent -> IO b) -> IO b
@@ -195,14 +195,14 @@ withGenericBigEvent :: GenericBigEvent -> (Ptr GenericBigEvent -> IO b) -> IO b
 waitForEvent :: Connection -> IO GenericEvent
 waitForEvent c = withConnection c $ \cPtr -> do
                  evPtr <- {#call wait_for_event#} cPtr
-                 liftM GenericEvent $ newForeignPtr finalizerFree evPtr
+                 GenericEvent <$> newForeignPtr finalizerFree evPtr
 
 instance HasResponseType GenericEvent where
     responseType = eventResponseType
 
 eventResponseType :: GenericEvent -> IO Int
 eventResponseType ev = withGenericEvent ev $ \evPtr ->
-                       liftM fromIntegral $ {#get generic_event_t->response_type#} evPtr
+                       fromIntegral <$> {#get generic_event_t->response_type#} evPtr
 
 -- | The conversion is not checked.             
 unsafeToBigEvent :: GenericEvent -> GenericBigEvent
@@ -216,7 +216,7 @@ unsafeToError (GenericEvent ev) = GenericError . castForeignPtr $ ev
 -- introduced when XCB decodes from the wire.
 bigEventLength :: GenericBigEvent -> IO Word32
 bigEventLength bge = withGenericBigEvent bge $ \bgePtr -> do
-                     lenField <- fromIntegral `liftM` {#get ge_event_t->length#} bgePtr
+                     lenField <- fromIntegral <$> {#get ge_event_t->length#} bgePtr
                      return $ 8 + 1 + lenField
 
 -- | Unsafe in that referential transperency may be broken - 
@@ -246,7 +246,7 @@ requestCheck c cookie
     = withConnection c $ \cPtr -> do
       errPtr <- xcb_request_check cPtr cookie
       if errPtr == nullPtr then return Nothing else do
-      liftM (Just . GenericError) $ newForeignPtr finalizerFree errPtr
+      Just . GenericError <$> newForeignPtr finalizerFree errPtr
 
 foreign import ccall xcb_request_check :: Ptr Connection -> Cookie -> IO (Ptr GenericError)
 
@@ -263,7 +263,7 @@ withGenericReply :: GenericReply -> (Ptr GenericReply -> IO b) -> IO b
 -- | Returns the length of the reply in units of four bytes
 replyLength :: GenericReply -> IO Word32
 replyLength rep = withGenericReply rep $ \repPtr -> do
-                  lenField <- liftM fromIntegral $ {#get generic_reply_t->length#} repPtr
+                  lenField <- fromIntegral <$> {#get generic_reply_t->length#} repPtr
                   return $ lenField + 1 -- for the inserted full_sequence field
 
 instance HasResponseType GenericReply where
@@ -271,7 +271,7 @@ instance HasResponseType GenericReply where
 
 replyResponseType :: GenericReply -> IO Int
 replyResponseType rep = withGenericReply rep $ \repPtr ->
-                        liftM fromIntegral $ {#get generic_reply_t->response_type#} repPtr
+                        fromIntegral <$> {#get generic_reply_t->response_type#} repPtr
 
 -- | Unchecked conversion
 unsafeReplyToError :: GenericReply -> GenericError
@@ -281,7 +281,7 @@ unsafeReplyToError (GenericReply rep) = GenericError . castForeignPtr $ rep
 -- location as the 'GenericReply'
 unsafeReplyData :: GenericReply -> IO S.ByteString
 unsafeReplyData rep@(GenericReply repFPtr) = do
-  len <- fromIntegral `liftM` replyLength rep
+  len <- fromIntegral <$> replyLength rep
   return $ S.fromForeignPtr (castForeignPtr repFPtr) 0 (4*len)
 
 -- Sending requests
@@ -309,7 +309,7 @@ sendRequest c flags bytes rInfo
       withLazyByteString bytes $ \vec vecNum ->
       withIOVec vec $ \vecPtr -> do
       {#set protocol_request_t->count#} rPtr (fromIntegral vecNum)
-      liftM (Cookie . fromIntegral) $ {#call send_request#} cPtr (fromIntegral flags) (castPtr vecPtr) rPtr
+      Cookie . fromIntegral <$> {#call send_request#} cPtr (fromIntegral flags) (castPtr vecPtr) rPtr
 
 -- | Return 'Nothing' on failure, or the last request id on success.
 -- This must be called before calling 'writev', as it indicates that you would
@@ -355,7 +355,7 @@ waitForReply c (Cookie request) =
 -- Other
 generateId :: Connection -> IO Word32
 generateId c = withConnection c $ \cPtr ->
-               liftM fromIntegral $ {#call generate_id#} cPtr
+               fromIntegral <$> {#call generate_id#} cPtr
 
 
 -- Internal utils
