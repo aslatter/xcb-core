@@ -20,3 +20,5 @@ Library
   Build-Tools: c2hs
 
   Extra-libraries: xcb
+
+  Ghc-options: -Wall
