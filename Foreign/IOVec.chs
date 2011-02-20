@@ -11,11 +11,12 @@ module Foreign.IOVec
     )
     where
 
-import C2HS
-
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Internal as S
 import qualified Data.ByteString.Lazy as L
+
+import Foreign
+import Foreign.C.Types
 
 #include <sys/uio.h>
 
@@ -49,12 +50,12 @@ withLazyByteString b f =
 
              in withForeignPtr fptr $ \bsPtr -> do
                   {#set hs_iovec->iov_base#} vec $ castPtr $ bsPtr `plusPtr` bsOff
-                  {#set hs_iovec->iov_len#}  vec $ cIntConv bsLen
+                  {#set hs_iovec->iov_len#}  vec $ fromIntegral bsLen
                   go vecAry (off+1) bs
 
 -- | Binding to writev using 'withLazyByteString'
 writev :: CInt -> L.ByteString -> IO CSize
 writev fd bs = withLazyByteString bs $ \iov count ->
-               c_writev fd iov (cIntConv count)
+               c_writev fd iov (fromIntegral count)
 
 foreign import ccall unsafe "writev" c_writev :: CInt -> IOVec -> CInt -> IO CSize

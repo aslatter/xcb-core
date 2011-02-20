@@ -17,5 +17,6 @@ Library
                     Graphics.X11.Xcb
 
   Extensions: ScopedTypeVariables, ForeignFunctionInterface
+  Build-Tools: c2hs
 
-  Other-modules: C2HS
+  Extra-libraries: xcb

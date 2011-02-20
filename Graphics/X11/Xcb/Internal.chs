@@ -8,17 +8,20 @@
 module Graphics.X11.Xcb.Internal where
 
 import Control.Monad
+import Foreign
+import Foreign.C.String
 import Foreign.C.Types
 
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Internal as S
 import qualified Data.ByteString.Lazy as L
 
-import C2HS
 {#import Foreign.IOVec#}
 
 #include <xcb/xcb.h>
 #include <xcb/xcbext.h>
+
+peekIntConv ptr = fromIntegral `liftM` peek ptr
 
 {-
   Welcome to my sometimes-dodgy FFI bindings to XCB.
@@ -79,7 +82,7 @@ parseDisplay display
 -- | Flush the write buffers.
 flush :: Connection -> IO Bool
 flush c = withConnection c $ \cPtr ->
-          liftM cToBool $ {#call flush as flush_#} cPtr
+          liftM toBool $ {#call flush as flush_#} cPtr
 
 -- | The memory backing this data structure is owned
 -- by the passed in Connection - and will magicaly vanish
@@ -91,7 +94,7 @@ unsafeGetSetup c = withConnection c $ \cPtr ->
 
 -- | Length of the setup data in units of four bytes.
 setupLength :: Setup -> IO Word16
-setupLength (Setup s) = liftM cIntConv $ {#get setup_t->length#} s
+setupLength (Setup s) = liftM fromIntegral $ {#get setup_t->length#} s
 
 -- | This ByteString is just as unsafe as the passed in connection
 -- object.  Please make a copy.
@@ -151,15 +154,15 @@ extensionPresent (ExtensionInfo ext)
 
 extensionMajorOpcode :: ExtensionInfo -> IO Word8
 extensionMajorOpcode (ExtensionInfo ext)
-    = liftM cIntConv $ {#get query_extension_reply_t->major_opcode#} ext
+    = liftM fromIntegral $ {#get query_extension_reply_t->major_opcode#} ext
 
 extensionFirstEvent :: ExtensionInfo -> IO Word8
 extensionFirstEvent (ExtensionInfo ext)
-    = liftM cIntConv $ {#get query_extension_reply_t->first_event#} ext
+    = liftM fromIntegral $ {#get query_extension_reply_t->first_event#} ext
 
 extensionFirstError :: ExtensionInfo -> IO Word8
 extensionFirstError (ExtensionInfo ext)
-    = liftM cIntConv $ {#get query_extension_reply_t->first_error#} ext
+    = liftM fromIntegral $ {#get query_extension_reply_t->first_error#} ext
 
 -- | Non-blocking query for extension data
 prefetchExtension :: Connection -> Extension -> IO ()
@@ -192,7 +195,7 @@ instance HasResponseType GenericEvent where
 
 eventResponseType :: GenericEvent -> IO Int
 eventResponseType ev = withGenericEvent ev $ \evPtr ->
-                       liftM cIntConv $ {#get generic_event_t->response_type#} evPtr
+                       liftM fromIntegral $ {#get generic_event_t->response_type#} evPtr
 
 -- | The conversion is not checked.             
 unsafeToBigEvent :: GenericEvent -> GenericBigEvent
@@ -206,7 +209,7 @@ unsafeToError (GenericEvent ev) = GenericError . castForeignPtr $ ev
 -- introduced when XCB decodes from the wire.
 bigEventLength :: GenericBigEvent -> IO Word32
 bigEventLength bge = withGenericBigEvent bge $ \bgePtr -> do
-                     lenField <- cIntConv `liftM` {#get ge_event_t->length#} bgePtr
+                     lenField <- fromIntegral `liftM` {#get ge_event_t->length#} bgePtr
                      return $ 8 + 1 + lenField
 
 -- | Unsafe in that referential transperency may be broken - 
@@ -251,7 +254,7 @@ unsafeErrorData (GenericError errFPtr) =
 -- | Returns the length of the reply in units of four bytes
 replyLength :: GenericReply -> IO Word32
 replyLength rep = withGenericReply rep $ \repPtr -> do
-                  lenField <- liftM cIntConv $ {#get generic_reply_t->length#} repPtr
+                  lenField <- liftM fromIntegral $ {#get generic_reply_t->length#} repPtr
                   return $ lenField + 1 -- for the inserted full_sequence field
 
 instance HasResponseType GenericReply where
@@ -259,7 +262,7 @@ instance HasResponseType GenericReply where
 
 replyResponseType :: GenericReply -> IO Int
 replyResponseType rep = withGenericReply rep $ \repPtr ->
-                        liftM cIntConv $ {#get generic_reply_t->response_type#} repPtr
+                        liftM fromIntegral $ {#get generic_reply_t->response_type#} repPtr
 
 -- | Unchecked conversion
 unsafeReplyToError :: GenericReply -> GenericError
@@ -269,7 +272,7 @@ unsafeReplyToError (GenericReply rep) = GenericError . castForeignPtr $ rep
 -- location as the 'GenericReply'
 unsafeReplyData :: GenericReply -> IO S.ByteString
 unsafeReplyData rep@(GenericReply repFPtr) = do
-  len <- cIntConv `liftM` replyLength rep
+  len <- fromIntegral `liftM` replyLength rep
   return $ S.fromForeignPtr (castForeignPtr repFPtr) 0 (4*len)
 
 -- Sending requests
@@ -280,7 +283,7 @@ mkRequestInfo ext opcode isVoid = do
       fptr <- mallocForeignPtrBytes {#sizeof protocol_request_t#}
       withForeignPtr fptr $ \ptr -> do
         {#set protocol_request_t->ext#} ptr $ maybe (Extension nullPtr) id ext
-        {#set protocol_request_t->opcode#} ptr (cIntConv opcode)
+        {#set protocol_request_t->opcode#} ptr (fromIntegral opcode)
         {#set protocol_request_t->isvoid#} ptr (fromBool isVoid)
       return $ RequestInfo fptr
       
@@ -295,14 +298,14 @@ sendRequest c flags bytes rInfo
       withRequestInfo rInfo $ \rPtr ->
       withLazyByteString bytes $ \vec vecNum ->
       withIOVec vec $ \vecPtr -> do
-      {#set protocol_request_t->count#} rPtr (cIntConv vecNum)
-      liftM (Cookie . cIntConv) $ {#call send_request#} cPtr (cIntConv flags) (castPtr vecPtr) rPtr
+      {#set protocol_request_t->count#} rPtr (fromIntegral vecNum)
+      liftM (Cookie . fromIntegral) $ {#call send_request#} cPtr (fromIntegral flags) (castPtr vecPtr) rPtr
 
 waitForReply :: Connection -> Cookie -> IO (Either GenericError GenericReply)
 waitForReply c (Cookie request) =
     withConnection c $ \cPtr ->
     alloca $ \errPtrPtr -> do
-    repPtr <- {#call wait_for_reply#} cPtr (cIntConv request) errPtrPtr
+    repPtr <- {#call wait_for_reply#} cPtr (fromIntegral request) errPtrPtr
     if repPtr == nullPtr then do
         errPtr <- peek errPtrPtr
         errFPtr <- newForeignPtr finalizerFree errPtr
@@ -315,7 +318,7 @@ waitForReply c (Cookie request) =
 -- Other
 generateId :: Connection -> IO Word32
 generateId c = withConnection c $ \cPtr ->
-               liftM cIntConv $ {#call generate_id#} cPtr
+               liftM fromIntegral $ {#call generate_id#} cPtr
 
 
 -- Internal utils
