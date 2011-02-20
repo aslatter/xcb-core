@@ -21,6 +21,9 @@ import qualified Data.ByteString.Lazy as L
 #include <xcb/xcb.h>
 #include <xcb/xcbext.h>
 
+peekIntConv
+    :: (Integral a, Num b, Storable a)
+       => Ptr a -> IO b
 peekIntConv ptr = fromIntegral `liftM` peek ptr
 
 {-
@@ -37,6 +40,7 @@ peekIntConv ptr = fromIntegral `liftM` peek ptr
 
 {#context lib="xcb" prefix="xcb_"#}
 
+withConnection :: Connection -> (Ptr Connection -> IO b) -> IO b
 {#pointer *connection_t as Connection foreign newtype#}
 {#pointer *setup_t as Setup newtype#} -- no finalizer, part of the Connection
 
@@ -180,7 +184,9 @@ isError :: HasResponseType a => a -> IO Bool
 isError ev = (== 2) `liftM` responseType ev
 
 -- Events
+withGenericEvent :: GenericEvent -> (Ptr GenericEvent -> IO b) -> IO b
 {#pointer *generic_event_t as GenericEvent foreign newtype#}
+withGenericBigEvent :: GenericBigEvent -> (Ptr GenericBigEvent -> IO b) -> IO b
 {#pointer *ge_event_t as GenericBigEvent foreign newtype#}
 
 -- | The XCB documentation seems to imply that this can also return
@@ -217,8 +223,8 @@ bigEventLength bge = withGenericBigEvent bge $ \bgePtr -> do
 -- the event.
 unsafeEventData :: GenericEvent -> IO S.ByteString
 unsafeEventData ge = do
-  isError <- isError ge
-  if isError then unsafeErrorData (unsafeToError ge) else do
+  isErr <- isError ge
+  if isErr then unsafeErrorData (unsafeToError ge) else do
 
   isBig <- isBigEvent ge
   if isBig
@@ -231,6 +237,7 @@ unsafeEventData ge = do
        in return $ S.fromForeignPtr (castForeignPtr evFPtr) 0 32
 
 -- Errors
+withGenericError :: GenericError -> (Ptr GenericError -> IO b) -> IO b
 {#pointer *generic_error_t as GenericError foreign newtype#}
 
 requestCheck :: Connection -> Cookie -> IO (Maybe GenericError)
@@ -249,6 +256,7 @@ unsafeErrorData (GenericError errFPtr) =
     return $ S.fromForeignPtr (castForeignPtr errFPtr) 0 32
 
 -- Replies
+withGenericReply :: GenericReply -> (Ptr GenericReply -> IO b) -> IO b
 {#pointer *generic_reply_t as GenericReply foreign newtype#}
 
 -- | Returns the length of the reply in units of four bytes
@@ -276,15 +284,16 @@ unsafeReplyData rep@(GenericReply repFPtr) = do
   return $ S.fromForeignPtr (castForeignPtr repFPtr) 0 (4*len)
 
 -- Sending requests
+withRequestInfo :: RequestInfo -> (Ptr RequestInfo -> IO b) -> IO b
 {#pointer *protocol_request_t as RequestInfo foreign newtype#}
 
 mkRequestInfo :: (Maybe Extension) -> CUInt -> Bool -> IO RequestInfo
 mkRequestInfo ext opcode isVoid = do
       fptr <- mallocForeignPtrBytes {#sizeof protocol_request_t#}
-      withForeignPtr fptr $ \ptr -> do
-        {#set protocol_request_t->ext#} ptr $ maybe (Extension nullPtr) id ext
-        {#set protocol_request_t->opcode#} ptr (fromIntegral opcode)
-        {#set protocol_request_t->isvoid#} ptr (fromBool isVoid)
+      withForeignPtr fptr $ \rptr -> do
+        {#set protocol_request_t->ext#} rptr $ maybe (Extension nullPtr) id ext
+        {#set protocol_request_t->opcode#} rptr (fromIntegral opcode)
+        {#set protocol_request_t->isvoid#} rptr (fromBool isVoid)
       return $ RequestInfo fptr
       
 {#enum send_request_flags_t as RequestFlags {underscoreToCase} deriving(Eq, Show)#}

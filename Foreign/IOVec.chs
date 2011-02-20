@@ -37,8 +37,8 @@ withByteString b = withLazyByteString (L.fromChunks [b])
 -- But I suppose that nothing stops you from calling into
 -- readv and blowing away the passed-in ByteString.
 withLazyByteString :: L.ByteString -> (IOVec -> Int -> IO b) -> IO b
-withLazyByteString b f =
-    let bs = L.toChunks b
+withLazyByteString lbs f =
+    let bs = L.toChunks lbs
         num = length bs
     in allocaBytes (num * {#sizeof hs_iovec#}) $ \vecAry -> go vecAry 0 bs
 
