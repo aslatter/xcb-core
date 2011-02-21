@@ -2,10 +2,15 @@
 
 {-# LANGUAGE ForeignFunctionInterface, BangPatterns #-}
 
+{- |
+ I reserve the right to make this module private at any time.
+ Specifically, this module will become private once I can do
+ so without breaking c2hs preprocessing.
+ -}
 module Foreign.IOVec
     (IOVec()
-    ,withByteString
     ,withLazyByteString
+    ,withByteString
     ,withIOVec
     ,writev
     )
@@ -25,6 +30,9 @@ import Foreign.C.Types
 typedef struct iovec hs_iovec;
 #endc
 
+-- | The IOVev type is a newtype around
+-- an FFI `Ptr`, so you can pass it as is
+-- to FFI calls.
 {#pointer *hs_iovec as IOVec newtype#}
 
 withIOVec :: IOVec -> (Ptr IOVec -> IO a) -> IO a
@@ -36,7 +44,12 @@ withByteString b = withLazyByteString (L.fromChunks [b])
 
 -- | This is intented for calling into something like writev.
 -- But I suppose that nothing stops you from calling into
--- readv and blowing away the passed-in ByteString.
+-- readv and blowing away the passed-in ByteString. Don't do that.
+--
+-- The number passed to the callback is the number of blocks
+-- in the `IOVec`.
+--
+-- The spin of the lazy bytestring is forced prior to traversal.
 withLazyByteString :: L.ByteString -> (IOVec -> Int -> IO b) -> IO b
 withLazyByteString lbs f =
     let bs = L.toChunks lbs
