@@ -13,6 +13,7 @@ module Foreign.IOVec
 
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Internal as S
+import qualified Data.ByteString.Unsafe as S
 import qualified Data.ByteString.Lazy as L
 
 import Foreign
@@ -40,20 +41,32 @@ withLazyByteString :: L.ByteString -> (IOVec -> Int -> IO b) -> IO b
 withLazyByteString lbs f =
     let bs = L.toChunks lbs
         num = length bs
-    in allocaBytes (num * {#sizeof hs_iovec#}) $ \vecAry -> go vecAry 0 bs
+    in allocaBytes (num * {#sizeof hs_iovec#}) $
+           \vecAry -> do
+             fill vecAry 0 bs
+             x <- f (IOVec vecAry) num
+             touchAllBS bs
+             return x
 
-   where go vecAry !off [] = f (IOVec vecAry) off
-         go vecAry !off (b:bs) =
+   where fill _vecAry !_off [] = return ()
+         fill vecAry !off (b:bs) =
 
              let vec = vecAry `plusPtr` (off * {#sizeof hs_iovec#})
-                 (fptr, bsOff, bsLen) = S.toForeignPtr b
 
-             in withForeignPtr fptr $ \bsPtr -> do
-                  {#set hs_iovec->iov_base#} vec $ castPtr $ bsPtr `plusPtr` bsOff
-                  {#set hs_iovec->iov_len#}  vec $ fromIntegral bsLen
-                  go vecAry (off+1) bs
+             in do
+               S.unsafeUseAsCStringLen b $ \(bsptr,bslen) -> do
+                  {#set hs_iovec->iov_base#} vec $ castPtr $ bsptr
+                  {#set hs_iovec->iov_len#}  vec $ fromIntegral bslen
+               fill vecAry (off+1) bs
 
--- | Binding to writev using 'withLazyByteString'
+-- utility functions
+touchBS :: S.ByteString -> IO ()
+touchBS b = case S.toForeignPtr b of (fptr,_,_) -> touchForeignPtr fptr
+
+touchAllBS :: [S.ByteString] -> IO ()
+touchAllBS xs = mapM_ touchBS xs
+
+-- | Binding to writev using 'withLazyByteString'. For testing.
 writev :: CInt -> L.ByteString -> IO CSize
 writev fd bs = withLazyByteString bs $ \iov count ->
                c_writev fd iov (fromIntegral count)
