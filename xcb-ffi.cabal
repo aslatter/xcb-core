@@ -18,6 +18,8 @@ Library
                     Graphics.X11.Xcb.Internal,
                     Graphics.X11.Xcb
 
+  c-sources:  cbits/handoff.c
+
   Extensions: ScopedTypeVariables, ForeignFunctionInterface
   Build-Tools: c2hs
 
