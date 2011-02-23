@@ -6,7 +6,7 @@ module Graphics.X11.Xcb
  ( Connection
  , connect
  , connect'
- , I.parseDisplay
+ -- , I.parseDisplay -- no reason not to export, but not sure why we would?
  , writeRequests
  , maximumRequestLength
  , prefetchMaximumReuestLength
@@ -64,7 +64,7 @@ current socket owner to give the socket back.
 to return ownership of the socket.
 
 Creating C-usable callbacks from Haskell functions
-which have indeterminant lifetimes is hard.
+which have indeterminate lifetimes is hard.
 
 Since the only thing we need to know is if the
 socket has been taken back or not (there are
@@ -115,7 +115,13 @@ takeSocket c fs = do
 
 guardIO p = if p then return () else fail "guard failed"
 
--- | Returns the sequence number of the last request sent.
+{- |
+
+Write raw bytes on to the connection with the server.
+Returns the sequence number of the last request sent.
+
+
+-}
 writeRequests :: Connection -> L.ByteString -> Int -> IO Word64
 writeRequests c bytes num
     = lockCon c $ do
