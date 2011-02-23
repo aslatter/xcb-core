@@ -12,6 +12,7 @@ module Graphics.X11.Xcb
  , prefetchMaximumReuestLength
  , connectionHasError
  , I.Cookie(..)
+ , waitForEvent
  , waitForReply
  , generateId
  , getSetup
@@ -31,8 +32,6 @@ import qualified Data.ByteString.Lazy as L
 
 import Control.Applicative ((<$>))
 import Control.Concurrent.MVar
-import Control.Monad
-import Data.Bits((.&.))
 import Data.IORef
 import Data.List (foldl')
 import Data.Word
@@ -107,12 +106,13 @@ takeSocket c fs = do
   res <- I.takeSocket (c_conn c) c_return_socket (castPtr hasPtr) flags
   case res of
     Nothing -> return False
-    Just last
+    Just lastSeq
         -> do
-      writeIORef (c_last_req c) last
+      writeIORef (c_last_req c) lastSeq
       withForeignPtr (c_has_socket c) (flip poke $ fromBool True)
       return True
 
+guardIO :: Bool -> IO ()
 guardIO p = if p then return () else fail "guard failed"
 
 {- |
@@ -125,10 +125,10 @@ Returns the sequence number of the last request sent.
 writeRequests :: Connection -> L.ByteString -> Int -> IO Word64
 writeRequests c bytes num
     = lockCon c $ do
-        ret <- takeSocket c []
-        guardIO ret -- should probably have better error here
-        last <- readIORef (c_last_req c)
-        let newLast = last + fromIntegral num
+        -- should probably have better error here
+        takeSocket c [] >>= guardIO
+        lastSeq <- readIORef (c_last_req c)
+        let newLast = lastSeq + fromIntegral num
         ret <- I.writev (c_conn c) bytes (fromIntegral num)
         guardIO ret -- should have better error here
         writeIORef (c_last_req c) newLast
@@ -145,11 +145,11 @@ connect' displayStr
     Nothing -> return Nothing
     Just (icon,_)
         -> do
-      last <- newIORef 0
+      lastRef <- newIORef 0
       hasPtr <- mallocForeignPtr
       withForeignPtr hasPtr (flip poke 0)
       lock <- newLock
-      return $ Just $ C icon hasPtr lock last
+      return $ Just $ C icon hasPtr lock lastRef
 
 -- | Maximum size of a single request.
 -- May not be an asynchronous call, as we'll make a call out
@@ -171,17 +171,6 @@ connectionHasError = I.connectionHasError . c_conn
 generateId :: Connection -> IO Word32
 generateId = I.generateId . c_conn
 
--- | Try not to do something sneaky like
--- 'withForeignConnection ptr return'.  The Connection
--- is not garaunteed outside the scope of this call.
-withForeignConnection :: Ptr I.Connection
-                      -> (I.Connection -> IO a)
-                      -> IO a
-withForeignConnection cPtr f
-    = do
-  c <- I.mkConnection_ cPtr
-  x <- f c
-  return x
 
 -- | Returns an event or error from the queue.
 -- Errors associated with checked requests will not
@@ -190,7 +179,6 @@ waitForEvent :: Connection -> IO S.ByteString
 waitForEvent c = I.waitForEvent (c_conn c) >>= I.unsafeEventData
 -- I haven't convinced myself this is safe to do without a lock.
 -- Maybe a separate events lock on the connection?
-
 
 waitForReply :: Connection -> I.Cookie -> IO (Either S.ByteString S.ByteString)
 waitForReply c cookie
