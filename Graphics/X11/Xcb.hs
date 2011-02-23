@@ -8,26 +8,21 @@ module Graphics.X11.Xcb
  , connect'
  , I.parseDisplay
  , writeRequests
- -- ,I.maximumRequestLength
- -- ,I.prefetchMaximumReuestLength
- -- ,I.connectionHasError
- -- ,sendRequest
- -- ,I.RequestFlags(..)
- -- ,I.RequestInfo
- -- ,I.mkRequestInfo
- ,I.Cookie(..)
- -- ,requestCheck
- ,waitForReply
- -- ,I.generateId
- ,getSetup
- ,I.Extension(..)
- -- ,I.prefetchExtension
- ,extensionPresent
- ,extensionMajorOpcode
- ,extensionFirstEvent
- ,extensionFirstError
- -- ,withForeignConnection
- -- ,I.withConnection
+ , maximumRequestLength
+ , prefetchMaximumReuestLength
+ , connectionHasError
+ , I.Cookie(..)
+ , waitForReply
+ , generateId
+ , getSetup
+ , I.Extension(..)
+ , prefetchExtension
+ , extensionPresent
+ , extensionMajorOpcode
+ , extensionFirstEvent
+ , extensionFirstError
+ -- , withForeignConnection
+ , withConnectionPtr
  ) where
 
 import qualified Graphics.X11.Xcb.Internal as I
@@ -84,6 +79,11 @@ data Connection
          c_lock :: Lock,
          c_last_req :: IORef Word64
         }
+
+-- | For passing to foreign libraries which
+-- can make use of a libxcb connection.
+withConnectionPtr :: Connection -> (Ptr Connection -> IO a) -> IO a
+withConnectionPtr c k = I.withConnection (c_conn c) (k . castPtr)
 
 -- | The the Haskell xcb connection.
 -- This has nothing to do with the lock used
@@ -145,6 +145,25 @@ connect' displayStr
       lock <- newLock
       return $ Just $ C icon hasPtr lock last
 
+-- | Maximum size of a single request.
+-- May not be an asynchronous call, as we'll make a call out
+-- on the big-requests extension to find out if we can use that.
+maximumRequestLength :: Connection -> IO Word32
+maximumRequestLength = I.maximumRequestLength . c_conn
+
+-- | Asynchronous version of 'maximumRequestLength'.  The return
+-- from the server is cached for subsequent callse to 'maximumRequestLength'.
+prefetchMaximumReuestLength :: Connection -> IO ()
+prefetchMaximumReuestLength = I.prefetchMaximumReuestLength . c_conn
+
+-- | Is the connection in an error state?
+connectionHasError :: Connection -> IO Bool
+connectionHasError = I.connectionHasError . c_conn
+
+-- | Allocation a new xid. May involve server interaction
+-- (but likely won't).
+generateId :: Connection -> IO Word32
+generateId = I.generateId . c_conn
 
 -- | Try not to do something sneaky like
 -- 'withForeignConnection ptr return'.  The Connection
@@ -175,6 +194,10 @@ waitForReply c cookie
     Left err  -> Left <$> I.unsafeErrorData err
     Right rep -> Right <$> I.unsafeReplyData rep
 -- for locking, we might want to put a lock in the cookie
+
+-- | Non-blocking query for extension data
+prefetchExtension :: Connection -> I.Extension -> IO ()
+prefetchExtension c e = I.prefetchExtension (c_conn c) e
 
 extensionPresent :: Connection -> I.Extension -> IO Bool
 extensionPresent c e
