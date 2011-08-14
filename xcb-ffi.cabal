@@ -23,6 +23,6 @@ Library
   Extensions: ScopedTypeVariables, ForeignFunctionInterface
   Build-Tools: c2hs
 
-  Extra-libraries: xcb
+  Pkgconfig-depends: xcb
 
   Ghc-options: -Wall
