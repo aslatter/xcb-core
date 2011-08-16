@@ -22,7 +22,7 @@ module Graphics.X11.Xcb
  , extensionMajorOpcode
  , extensionFirstEvent
  , extensionFirstError
- -- , withForeignConnection
+ , withForeignConnection
  , withConnectionPtr
  ) where
 
@@ -84,6 +84,14 @@ data Connection
 withConnectionPtr :: Connection -> (Ptr Connection -> IO a) -> IO a
 withConnectionPtr c k = I.withConnection (c_conn c) (k . castPtr)
 
+-- | For a libxcb connection passed in from another library.
+-- Be carefule forking threads or saving off a reference to the connection -
+-- we can't coordinate the closing of the connection with the source
+-- of the connection.
+withForeignConnection :: Ptr Connection -> (Connection -> IO a) -> IO a
+withForeignConnection ptr k =
+  I.mkConnection_ (castPtr ptr) >>= dressIConn >>= k
+
 -- | The the Haskell xcb connection.
 -- This has nothing to do with the lock used
 -- on the inside of libxcb.
@@ -144,12 +152,15 @@ connect' displayStr
   case ret of
     Nothing -> return Nothing
     Just (icon,_)
-        -> do
-      lastRef <- newIORef 0
-      hasPtr <- mallocForeignPtr
-      withForeignPtr hasPtr (flip poke 0)
-      lock <- newLock
-      return $ Just $ C icon hasPtr lock lastRef
+        -> Just <$> dressIConn icon
+
+dressIConn :: I.Connection -> IO Connection
+dressIConn ptr = do
+  lastRef <- newIORef 0
+  hasPtr <- mallocForeignPtr
+  withForeignPtr hasPtr (flip poke 0)
+  lock <- newLock
+  return $ C ptr hasPtr lock lastRef
 
 -- | Maximum size of a single request.
 -- May not be an asynchronous call, as we'll make a call out
