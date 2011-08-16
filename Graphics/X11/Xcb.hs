@@ -222,4 +222,5 @@ extensionFirstError c e
 
 getSetup :: Connection -> IO S.ByteString
 getSetup c = S.copy <$> (I.unsafeGetSetup (c_conn c) >>= I.unsafeSetupData)
+-- TODO: need to prevent the connection getting GCd until after S.copy
 -- future thought: cache a copy on the connection wrapper
