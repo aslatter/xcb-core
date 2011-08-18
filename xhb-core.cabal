@@ -1,7 +1,7 @@
 
-Name:              xcb-ffi
+Name:              xhb-core
 Version:           0.0.0
-Description:       Raw bindings to libxcb
+Description:       Low-level operations for interacting with XCB
 License:           BSD3
 License-file:      LICENSE
 Author:            Antoine Latter
@@ -14,9 +14,12 @@ Library
 
   Build-depends: base == 4.*, bytestring == 0.9.*
 
-  Exposed-modules:  Foreign.IOVec,
-                    Graphics.X11.Xcb.Internal,
-                    Graphics.X11.Xcb
+  Exposed-modules:  Graphics.Xhb.Connection,
+                    Graphics.Xhb.Ext
+
+  Other-modules:    Foreign.IOVec,
+                    Graphics.Xhb.Internal,
+                    Graphics.Xhb.Types
 
   c-sources:  cbits/handoff.c
 

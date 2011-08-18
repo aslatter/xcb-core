@@ -2,7 +2,7 @@
 -- Commented out exports represent things left
 -- to do, or things that no longer make sense
 
-module Graphics.X11.Xcb
+module Graphics.Xhb.Connection
  ( Connection
  , connect
  , connect'
@@ -16,37 +16,21 @@ module Graphics.X11.Xcb
  , waitForReply
  , generateId
  , getSetup
- , I.Extension(..)
- , prefetchExtension
- , extensionPresent
- , extensionMajorOpcode
- , extensionFirstEvent
- , extensionFirstError
  , withForeignConnection
  , withConnectionPtr
  ) where
 
-import qualified Graphics.X11.Xcb.Internal as I
+import qualified Graphics.Xhb.Internal as I
+import Graphics.Xhb.Types
+
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
 
 import Control.Applicative ((<$>))
-import Control.Concurrent.MVar
 import Data.IORef
 import Data.List (foldl')
 import Data.Word
 import Foreign
-import Foreign.C
-
-
-type Lock = MVar ()
-
-newLock :: IO Lock
-newLock = newMVar ()
-
-withLock :: Lock -> IO a -> IO a
-withLock l k =
-    withMVar l $ const k
 
 {-
 
@@ -71,13 +55,6 @@ no buffers to flush on the Haskell end yet) we
 can do all of the callbacks with C code.
 
 -}
-
-data Connection
-    = C {c_conn :: I.Connection,
-         c_has_socket :: ForeignPtr CInt,
-         c_lock :: Lock,
-         c_last_req :: IORef Word64
-        }
 
 -- | For passing to foreign libraries which
 -- can make use of a libxcb connection.
@@ -199,26 +176,6 @@ waitForReply c cookie
     Left err  -> Left <$> I.unsafeErrorData err
     Right rep -> Right <$> I.unsafeReplyData rep
 -- for locking, we might want to put a lock in the cookie
-
--- | Non-blocking query for extension data
-prefetchExtension :: Connection -> I.Extension -> IO ()
-prefetchExtension c e = I.prefetchExtension (c_conn c) e
-
-extensionPresent :: Connection -> I.Extension -> IO Bool
-extensionPresent c e
-    = I.unsafeGetExtensionData (c_conn c) e >>= I.extensionPresent
-
-extensionMajorOpcode :: Connection -> I.Extension -> IO Word8
-extensionMajorOpcode c e
-    = I.unsafeGetExtensionData (c_conn c) e >>= I.extensionMajorOpcode
-
-extensionFirstEvent :: Connection -> I.Extension -> IO Word8
-extensionFirstEvent c e
-    = I.unsafeGetExtensionData (c_conn c) e >>= I.extensionFirstEvent
-
-extensionFirstError :: Connection -> I.Extension -> IO Word8
-extensionFirstError c e
-    = I.unsafeGetExtensionData (c_conn c) e >>= I.extensionFirstError
 
 getSetup :: Connection -> IO S.ByteString
 getSetup c = S.copy <$> (I.unsafeGetSetup (c_conn c) >>= I.unsafeSetupData)

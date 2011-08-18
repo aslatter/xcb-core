@@ -5,7 +5,7 @@
   ,GeneralizedNewtypeDeriving
   #-}
 
-module Graphics.X11.Xcb.Internal where
+module Graphics.Xhb.Internal where
 
 import Control.Applicative
 import Control.Monad
