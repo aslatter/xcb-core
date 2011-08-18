@@ -371,6 +371,10 @@ mkConnection = liftM Connection . newForeignPtr finalizerDisconnect
 mkConnection_ :: Ptr Connection -> IO Connection
 mkConnection_ = liftM Connection . newForeignPtr_
 
+touchConnection :: Connection -> IO ()
+touchConnection (Connection fptr) =
+    touchForeignPtr fptr
+
 -- | A finalizer for a Ptr Connection which shuts down the connection
 -- and frees all resources associated with it.
 finalizerDisconnect :: FinalizerPtr Connection

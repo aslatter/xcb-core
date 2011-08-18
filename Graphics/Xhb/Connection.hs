@@ -178,6 +178,9 @@ waitForReply c cookie
 -- for locking, we might want to put a lock in the cookie
 
 getSetup :: Connection -> IO S.ByteString
-getSetup c = S.copy <$> (I.unsafeGetSetup (c_conn c) >>= I.unsafeSetupData)
--- TODO: need to prevent the connection getting GCd until after S.copy
--- future thought: cache a copy on the connection wrapper
+getSetup c = do
+  ret <- S.copy <$> (I.unsafeGetSetup (c_conn c) >>= I.unsafeSetupData)
+  -- there are still some cases where we don't copy the bytestring in time
+  I.touchConnection $ c_conn c
+  return ret
+
